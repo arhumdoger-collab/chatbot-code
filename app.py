@@ -30,8 +30,8 @@ except Exception as e:
     st.error(f"Sheet load nahi ho rahi: {e}")
     st.stop()
 
-st.title("✂️ Salon Dost – Booking & Info 💈")
-st.caption("Assalam o Alaikum! Barber info ya booking poochiye 😊")
+st.title("✂️ Salon Dost 💈")
+st.caption("Sirf barber info aur booking ke liye 😊")
 
 with st.sidebar:
     st.header("Barbers")
@@ -41,25 +41,20 @@ with st.sidebar:
     if not appointments_df.empty:
         st.dataframe(appointments_df)
     else:
-        st.info("Koi appointment nahi hai abhi")
+        st.info("Koi appointment nahi")
 
-# Sheet data prompt mein daal de (to avoid hallucinations)
-barbers_info = "\n".join([f"{row['Name']}: Timing {row['Timing']}, Off Day {row['Off Day']}, Specialty {row['Specialty']}, Prices {row['Prices']}, Personal Number {row['Personal Number']}" for index, row in barbers_df.iterrows()])
-
-appointments_info = "\n".join([f"{row['Customer Name']}: Phone {row['Phone Number']}, Barber {row['Barber']}, Date {row['Date']}, Time {row['Time']}, Status {row['Status']}" for index, row in appointments_df.iterrows()])
+if "booking_step" not in st.session_state:
+    st.session_state.booking_step = 0
+    st.session_state.booking_data = {}
 
 system_prompt = (
-    f"Tu Salon Dost hai – bohot polite aur accurate reh. "
-    f"Sirf poochi cheez ka 1 sentence jawab de, sheet se exact data use kar. "
-    f"Available barbers info: {barbers_info} "
-    f"Appointments info: {appointments_info} "
-    f"Barber ka naam poocha to sirf uski sheet se info bata. "
-    f"Off day poocha to sirf off day bata. "
-    f"Booking ki baat ho to puch: 'Booking karwani hai? (Haan/Nahi)' "
-    f"Haan bole to step by step pooch: name → phone → barber → date → time. "
-    f"Confirm pe bol: 'Booking confirm! [Barber] ke paas [date] [time] pe aa jana 😊' "
-    f"Random baat pe bol: 'Sirf salon info ke liye hoon 😊' "
-    f"Hinglish mein. Emoji thore se. Galat info mat de."
+    "Tu sirf salon ka helper hai. Short aur polite jawab de. "
+    "Barber ka naam poocha to sirf uski timing, off day, number bata. "
+    "Random baat pe bol: 'Sirf salon booking ya info ke liye hoon 😊' "
+    "Booking ki baat ho to sirf haan bole to shuru kar: name → phone → barber → date → time. "
+    "Confirm pe bol: 'Booking confirm! [Barber] ke paas [date] [time] pe aa jana 😊' "
+    "1 sentence max. Hinglish mein. Emoji thore se. "
+    "Koi galat info mat de."
 )
 
 if "messages" not in st.session_state:
@@ -78,26 +73,25 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
     reply = ""
 
     if st.session_state.booking_step > 0:
-        # Booking flow
-        if st.session_state.booking_step = 1:
+        if st.session_state.booking_step == 1:
             st.session_state.booking_data["name"] = prompt
             reply = "Phone number bataiye 📞"
             st.session_state.booking_step += 1
-        elif st.session_state.booking_step = 2:
+        elif st.session_state.booking_step == 2:
             st.session_state.booking_data["phone"] = prompt
-            reply = "Kaunsa barber? ✂️"
+            reply = "Kaunsa barber? (Amir, Ahmed, Bilal, Sajid) ✂️"
             st.session_state.booking_step += 1
-        elif st.session_state.booking_step = 3:
+        elif st.session_state.booking_step == 3:
             st.session_state.booking_data["barber"] = prompt
-            reply = "Date bataiye 📅"
+            reply = "Date bataiye (jaise 28-Jan) 📅"
             st.session_state.booking_step += 1
-        elif st.session_state.booking_step = 4:
+        elif st.session_state.booking_step == 4:
             st.session_state.booking_data["date"] = prompt
-            reply = "Time bataiye 🕒"
+            reply = "Time bataiye (jaise 3:00 PM) 🕒"
             st.session_state.booking_step += 1
-        elif st.session_state.booking_step = 5:
+        elif st.session_state.booking_step == 5:
             st.session_state.booking_data["time"] = prompt
-            reply = f"Booking confirm! {st.session_state.booking_data['barber']} ke paas {st.session_state.booking_data['date']} {prompt} pe aa jana 😊"
+            reply = f"Booking confirm! {st.session_state.booking_data['barber']} ke paas {prompt} {st.session_state.booking_data['date']} pe aa jana 😊"
             st.session_state.booking_step = 0
             st.session_state.booking_data = {}
     else:
@@ -105,8 +99,8 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
             stream = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=st.session_state.messages,
-                temperature=0.2,  # bohot low – no hallucinations
-                max_tokens=50,
+                temperature=0.3,  # bohot low – strict aur kam galti
+                max_tokens=50,    # bohot chhota reply
                 stream=True,
             )
 
@@ -120,13 +114,13 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
 
             reply = full_response.strip()
 
-            # Booking puchna
+            # Booking puchna sirf jab zaroori ho
             if "booking" in lower_prompt or len(st.session_state.messages) > 5:
                 reply += " Booking karwani hai? (Haan/Nahi) 📅"
 
             if "haan" in lower_prompt:
                 st.session_state.booking_step = 1
-                reply = "Apna naam bataiye 📝"
+                reply = "Theek hai! Apna naam bataiye please 📝"
 
         except Exception as e:
             reply = f"Error: {str(e)}"
