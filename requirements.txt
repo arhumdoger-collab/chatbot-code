@@ -1,9 +1,8 @@
 streamlit==1.28.0
-pandas==2.0.0
+pandas==2.2.3          # latest stable, Python 3.12 ok
 requests==2.31.0
 openai==1.3.0
 python-dotenv==1.0.0
 gspread==5.10.0
 oauth2client==4.1.3
 supabase>=2.3.0
-# Updated for Railway deploy - removed postgrest-py fixed version
