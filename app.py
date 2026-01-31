@@ -1,67 +1,59 @@
 import streamlit as st
 import pandas as pd
-import requests
-from io import BytesIO
+from supabase import create_client, Client
 from openai import OpenAI
 import os
 
 # ────────────────────────────────────────────────
-# Secrets load karo
+# Secrets load
 # ────────────────────────────────────────────────
-api_key = os.getenv("GROQ_API_KEY")
+supabase_url = os.getenv("SUPABASE_URL")
+supabase_key = os.getenv("SUPABASE_KEY")
+groq_key = os.getenv("GROQ_API_KEY")
 
-if not api_key:
-    st.error("GROQ_API_KEY environment variable mein nahi mila! Railway Variables tab mein add kar de.")
+if not groq_key:
+    st.error("GROQ_API_KEY environment variable mein nahi mila! Railway mein add kar.")
     st.stop()
 
+if not supabase_url or not supabase_key:
+    st.error("Supabase URL ya Key missing hai! Railway Variables check kar.")
+    st.stop()
+
+# Supabase client
+supabase: Client = create_client(supabase_url, supabase_key)
+
+# Groq client
 client = OpenAI(
-    api_key=api_key,
+    api_key=groq_key,
     base_url="https://api.groq.com/openai/v1",
 )
 
 # ────────────────────────────────────────────────
-# Google Sheet se data load karo (safe way)
+# Barbers data Supabase se load karo
 # ────────────────────────────────────────────────
-excel_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSQQoqsFn3hBgBLqJj5YPgc9ZjBkO1feJ-hNVJJutMamti-AWWHTiE5BqWp7a2Q4Gnu5Mfy-yDxha7O/pub?output=xlsx"
-
 barbers_df = pd.DataFrame()
 appointments_df = pd.DataFrame()
 
 try:
-    response = requests.get(excel_url, timeout=10)
-    response.raise_for_status()  # agar 404/403 aaye to error
-
-    excel_data = BytesIO(response.content)
-    
-    # Sheets load karo
-    xls = pd.ExcelFile(excel_data)
-    
-    # 'Barbar' sheet check karo (exact naam hona chahiye)
-    if 'Barbar' in xls.sheet_names:
-        barbers_df = pd.read_excel(excel_data, sheet_name='Barbar')
-        st.success(f"{len(barbers_df)} barbers loaded from Google Sheet!")
+    response = supabase.table("barbers").select("*").execute()
+    if response.data:
+        barbers_df = pd.DataFrame(response.data)
+        st.success(f"{len(barbers_df)} barbers loaded from Supabase!")
     else:
-        st.warning("Sheet mein 'Barbar' naam ka tab nahi mila! Sheet names check kar: " + ", ".join(xls.sheet_names))
-    
-    # Appointments sheet
-    if 'Appointments' in xls.sheet_names:
-        appointments_df = pd.read_excel(excel_data, sheet_name='Appointments')
-        st.success(f"{len(appointments_df)} appointments loaded!")
-    else:
-        st.info("Appointments sheet nahi mili.")
+        st.warning("Barbers table mein koi data nahi mila.")
 
-except requests.exceptions.RequestException as e:
-    st.error(f"Google Sheet load nahi ho rahi: {str(e)}\nURL check kar ya public link regenerate kar de.")
+    app_response = supabase.table("appointments").select("*").execute()
+    if app_response.data:
+        appointments_df = pd.DataFrame(app_response.data)
+        st.success(f"{len(appointments_df)} appointments loaded from Supabase!")
+    else:
+        st.info("Appointments table mein koi data nahi mila abhi.")
+
 except Exception as e:
-    st.error(f"Data read karte waqt error: {str(e)}")
-    st.info("Agar sheet empty hai ya columns galat hain to Supabase ya CSV use kar sakte hain.")
-
-# Agar barbers_df empty hai to fallback
-if barbers_df.empty:
-    st.warning("Barbers ka data nahi mila. Booking abhi possible nahi hai.")
+    st.error(f"Supabase se data load nahi hue: {str(e)}")
 
 # ────────────────────────────────────────────────
-# UI Start
+# UI
 # ────────────────────────────────────────────────
 st.title("✂️ Salon Dost 💈")
 st.caption("Sirf barber info aur booking ke liye 😊")
@@ -75,7 +67,7 @@ with st.sidebar:
                 use_container_width=True
             )
         except KeyError as e:
-            st.error(f"Columns nahi mile: {e}\nSheet mein 'Name', 'Timing', 'Off Day', 'Personal Number' exact hone chahiye.")
+            st.error(f"Columns missing in barbers table: {e}")
     else:
         st.info("Barbers list abhi available nahi.")
 
@@ -93,7 +85,7 @@ if "booking_step" not in st.session_state:
     st.session_state.booking_data = {}
 
 # ────────────────────────────────────────────────
-# Chat history
+# Chat system prompt (updated for Supabase info)
 # ────────────────────────────────────────────────
 system_prompt = (
     "Tu sirf salon ka helper hai. Short aur polite jawab de. "
@@ -113,7 +105,7 @@ for message in st.session_state.messages[1:]:
         st.markdown(message["content"])
 
 # ────────────────────────────────────────────────
-# Chat input
+# Chat input aur logic
 # ────────────────────────────────────────────────
 if prompt := st.chat_input("Kya poochna hai? 😊"):
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -123,8 +115,18 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
     lower_prompt = prompt.lower()
     reply = ""
 
-    # Booking flow
-    if st.session_state.booking_step > 0:
+    # Barber info detect aur Supabase se fetch
+    if "kaun sa barber" in lower_prompt or "barber ki info" in lower_prompt or any(barber.lower() in lower_prompt for barber in barbers_df['Name'].tolist()):
+        # Specific barber ka naam extract kar (simple way)
+        for barber_name in barbers_df['Name'].tolist():
+            if barber_name.lower() in lower_prompt:
+                barber_info = barbers_df[barbers_df['Name'] == barber_name].iloc[0]
+                reply = f"{barber_name}: Timing - {barber_info['Timing']}, Off Day - {barber_info['Off Day']}, Number - {barber_info['Personal Number']} 😊"
+                break
+        if not reply:
+            reply = "Kaunsa barber? List mein dekho sidebar pe ✂️"
+
+    elif st.session_state.booking_step > 0:
         if st.session_state.booking_step == 1:
             st.session_state.booking_data["name"] = prompt
             reply = "Phone number bataiye 📞"
@@ -143,11 +145,33 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
             st.session_state.booking_step += 1
         elif st.session_state.booking_step == 5:
             st.session_state.booking_data["time"] = prompt
-            reply = f"Booking confirm! {st.session_state.booking_data['barber']} ke paas {prompt} {st.session_state.booking_data['date']} pe aa jana 😊"
+            reply = f"Booking confirm! {st.session_state.booking_data['barber']} ke paas {st.session_state.booking_data['date']} {prompt} pe aa jana 😊"
+            
+            # ────────────────────────────────────────────────
+            # Booking ko Supabase mein save karo
+            # ────────────────────────────────────────────────
+            try:
+                insert_data = {
+                    "customer_name": st.session_state.booking_data["name"],
+                    "phone": st.session_state.booking_data["phone"],
+                    "barber_name": st.session_state.booking_data["barber"],
+                    "date": st.session_state.booking_data["date"],
+                    "time": prompt,
+                    "status": "Confirmed"
+                }
+                supabase.table("appointments").insert(insert_data).execute()
+                st.success("Booking Supabase mein save ho gayi!")
+                
+                # Refresh appointments_df for sidebar
+                app_response = supabase.table("appointments").select("*").execute()
+                if app_response.data:
+                    appointments_df = pd.DataFrame(app_response.data)
+            except Exception as e:
+                st.error(f"Booking save nahi hui: {str(e)}")
+            
             st.session_state.booking_step = 0
             st.session_state.booking_data = {}
     else:
-        # Groq se reply
         try:
             stream = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
@@ -167,7 +191,6 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
 
             reply = full_response.strip()
 
-            # Booking trigger
             if "booking" in lower_prompt or len(st.session_state.messages) > 5:
                 reply += " Booking karwani hai? (Haan/Nahi) 📅"
 
