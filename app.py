@@ -137,13 +137,12 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
             barber_row = barbers_df[barbers_df['name'].str.lower() == prompt.lower()]
             if not barber_row.empty:
                 st.session_state.booking_data["barber_id"] = barber_row['id'].iloc[0]
+                reply = "Date bataiye (jaise 28-Jan) 📅"
+                st.session_state.booking_step += 1
             else:
                 reply = "Yeh barber list mein nahi mila 😔 Sahi naam batao."
-                st.session_state.booking_step = 3  # retry
-                st.session_state.messages.append({"role": "assistant", "content": reply})
+                st.session_state.booking_step = 3
                 
-            reply = "Date bataiye (jaise 28-Jan) 📅"
-            st.session_state.booking_step += 1
         elif st.session_state.booking_step == 4:
             st.session_state.booking_data["booking_date"] = prompt
             reply = "Time bataiye (jaise 3:00 PM) 🕒"
@@ -165,47 +164,66 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
                 supabase.table("bookings").insert(insert_data).execute()
                 reply = f"Booking confirm! {st.session_state.booking_data['barber_name']} ke paas {st.session_state.booking_data['booking_date']} {prompt} pe aa jana 😊"
                 st.success("Booking Supabase mein save ho gayi!")
-                
-                # Optional: appointments_df refresh karo
-                app_response = supabase.table("bookings").select("*").execute()
-                if app_response.data:
-                    global appointments_df
-                    appointments_df = pd.DataFrame(app_response.data)
             except Exception as e:
                 reply = f"Booking save nahi hui: {str(e)} 😔"
 
             st.session_state.booking_step = 0
             st.session_state.booking_data = {}
     else:
-        try:
-            stream = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=st.session_state.messages,
-                temperature=0.3,
-                max_tokens=50,
-                stream=True,
-            )
-
-            full_response = ""
-            placeholder = st.empty()
-
-            for chunk in stream:
-                if chunk.choices[0].delta.content is not None:
-                    full_response += chunk.choices[0].delta.content
-                    placeholder.markdown(full_response + "▌")
-
-            reply = full_response.strip()
-
-            if "booking" in lower_prompt:
-                reply += " Booking karwani hai? (Haan/Nahi) 📅"
-
-            if "haan" in lower_prompt:
+        # Check if user wants to book
+        if "booking" in lower_prompt or "book" in lower_prompt:
+            if "haan" in lower_prompt or "yes" in lower_prompt:
                 st.session_state.booking_step = 1
                 reply = "Theek hai! Apna naam bataiye please 📝"
+            else:
+                # Call Groq API for general response
+                try:
+                    stream = client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=st.session_state.messages,
+                        temperature=0.3,
+                        max_tokens=50,
+                        stream=True,
+                    )
 
-        except Exception as e:
-            reply = f"Groq se baat nahi ho rahi: {str(e)} 😔"
+                    full_response = ""
+                    placeholder = st.empty()
 
+                    for chunk in stream:
+                        if chunk.choices[0].delta.content is not None:
+                            full_response += chunk.choices[0].delta.content
+                            placeholder.markdown(full_response + "▌")
+
+                    reply = full_response.strip()
+                    reply += " Booking karwani hai? (Haan/Nahi) 📅"
+
+                except Exception as e:
+                    reply = f"Groq se baat nahi ho rahi: {str(e)} 😔"
+        else:
+            # Call Groq API for general response
+            try:
+                stream = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=st.session_state.messages,
+                    temperature=0.3,
+                    max_tokens=50,
+                    stream=True,
+                )
+
+                full_response = ""
+                placeholder = st.empty()
+
+                for chunk in stream:
+                    if chunk.choices[0].delta.content is not None:
+                        full_response += chunk.choices[0].delta.content
+                        placeholder.markdown(full_response + "▌")
+
+                reply = full_response.strip()
+
+            except Exception as e:
+                reply = f"Groq se baat nahi ho rahi: {str(e)} 😔"
+
+    # Append reply only once
     st.session_state.messages.append({"role": "assistant", "content": reply})
     with st.chat_message("assistant"):
         st.markdown(reply)
