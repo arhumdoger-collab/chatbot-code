@@ -5,7 +5,7 @@ from openai import OpenAI
 import os
 
 # ────────────────────────────────────────────────
-# Secrets load (Railway variables se)
+# Load secrets from environment variables
 # ────────────────────────────────────────────────
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
@@ -29,7 +29,7 @@ client = OpenAI(
 )
 
 # ────────────────────────────────────────────────
-# Barbers data Supabase se load karo
+# Load barbers data from Supabase
 # ────────────────────────────────────────────────
 barbers_df = pd.DataFrame()
 
@@ -44,7 +44,7 @@ except Exception as e:
     st.error(f"Barbers load nahi hue: {str(e)}")
 
 # ────────────────────────────────────────────────
-# UI - Sidebar mein barbers list
+# UI - Sidebar with barbers list
 # ────────────────────────────────────────────────
 st.title("✂️ Salon Dost 💈")
 st.caption("Sirf barber info aur booking ke liye 😊")
@@ -53,7 +53,6 @@ with st.sidebar:
     st.header("Barbers")
     if not barbers_df.empty:
         try:
-            # Sidebar table (columns jo tumhare table mein hain)
             st.dataframe(
                 barbers_df[['name', 'timing', 'off_day', 'phone_number']],
                 column_config={
@@ -78,7 +77,7 @@ if "booking_step" not in st.session_state:
     st.session_state.booking_data = {}
 
 # ────────────────────────────────────────────────
-# Chat system prompt (updated)
+# Chat system prompt
 # ────────────────────────────────────────────────
 system_prompt = (
     "Tu sirf salon ka helper hai. Short aur polite jawab de. "
@@ -99,7 +98,7 @@ for message in st.session_state.messages[1:]:
         st.markdown(message["content"])
 
 # ────────────────────────────────────────────────
-# Chat input aur logic
+# Chat input and logic
 # ────────────────────────────────────────────────
 if prompt := st.chat_input("Kya poochna hai? 😊"):
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -109,7 +108,7 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
     lower_prompt = prompt.lower()
     reply = ""
 
-    # Barber info detect aur Supabase se fetch
+    # Check for barber info request
     barber_found = False
     for barber_name in barbers_df['name'].tolist():
         if barber_name.lower() in lower_prompt:
@@ -118,12 +117,14 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
             barber_found = True
             break
 
-    # Agar barber found hai to sirf wahi reply do, aur agay mat jao
     if barber_found:
-        pass  # Reply already set above
+        # Reply already set → skip to sending
+        pass
+
     elif "barber" in lower_prompt and not barber_found:
         reply = "Kaunsa barber? Sidebar mein list dekho ✂️"
-    # Booking flow (only if barber not found)
+
+    # Booking flow
     elif st.session_state.booking_step > 0:
         if st.session_state.booking_step == 1:
             st.session_state.booking_data["customer_name"] = prompt
@@ -135,7 +136,6 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
             st.session_state.booking_step += 1
         elif st.session_state.booking_step == 3:
             st.session_state.booking_data["barber_name"] = prompt
-            # Barber ID find karo (foreign key ke liye)
             barber_row = barbers_df[barbers_df['name'].str.lower() == prompt.lower()]
             if not barber_row.empty:
                 st.session_state.booking_data["barber_id"] = barber_row['id'].iloc[0]
@@ -143,8 +143,7 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
                 st.session_state.booking_step += 1
             else:
                 reply = "Yeh barber list mein nahi mila 😔 Sahi naam batao."
-                st.session_state.booking_step = 3
-                
+                st.session_state.booking_step = 3  # retry
         elif st.session_state.booking_step == 4:
             st.session_state.booking_data["booking_date"] = prompt
             reply = "Time bataiye (jaise 3:00 PM) 🕒"
@@ -152,9 +151,6 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
         elif st.session_state.booking_step == 5:
             st.session_state.booking_data["booking_time"] = prompt
 
-            # ────────────────────────────────────────────────
-            # Booking Supabase mein save karo
-            # ────────────────────────────────────────────────
             try:
                 insert_data = {
                     "customer_name": st.session_state.booking_data["customer_name"],
@@ -171,37 +167,9 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
 
             st.session_state.booking_step = 0
             st.session_state.booking_data = {}
-    # Check if user wants to book
-    elif "booking" in lower_prompt or "book" in lower_prompt:
-        if "haan" in lower_prompt or "yes" in lower_prompt:
-            st.session_state.booking_step = 1
-            reply = "Theek hai! Apna naam bataiye please 📝"
-        else:
-            # Call Groq API for general response
-            try:
-                stream = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=st.session_state.messages,
-                    temperature=0.3,
-                    max_tokens=50,
-                    stream=True,
-                )
 
-                full_response = ""
-                placeholder = st.empty()
-
-                for chunk in stream:
-                    if chunk.choices[0].delta.content is not None:
-                        full_response += chunk.choices[0].delta.content
-                        placeholder.markdown(full_response + "▌")
-
-                reply = full_response.strip()
-                reply += " Booking karwani hai? (Haan/Nahi) 📅"
-
-            except Exception as e:
-                reply = f"Groq se baat nahi ho rahi: {str(e)} 😔"
+    # Normal message → Groq
     else:
-        # Call Groq API for general response
         try:
             stream = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
@@ -221,10 +189,15 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
 
             reply = full_response.strip()
 
+            # Suggest booking only if relevant
+            if "booking" in lower_prompt or "book" in lower_prompt:
+                reply += " Booking karwani hai? (Haan/Nahi) 📅"
+
         except Exception as e:
             reply = f"Groq se baat nahi ho rahi: {str(e)} 😔"
 
     # Append reply only once
-    st.session_state.messages.append({"role": "assistant", "content": reply})
-    with st.chat_message("assistant"):
-        st.markdown(reply)
+    if reply:
+        st.session_state.messages.append({"role": "assistant", "content": reply})
+        with st.chat_message("assistant"):
+            st.markdown(reply)
