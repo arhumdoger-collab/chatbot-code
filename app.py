@@ -119,10 +119,12 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
             break
 
     # Agar barber found hai to sirf wahi reply do, aur agay mat jao
-    if not barber_found and "barber" in lower_prompt:
+    if barber_found:
+        pass  # Reply already set above
+    elif "barber" in lower_prompt and not barber_found:
         reply = "Kaunsa barber? Sidebar mein list dekho ✂️"
     # Booking flow (only if barber not found)
-    elif not barber_found and st.session_state.booking_step > 0:
+    elif st.session_state.booking_step > 0:
         if st.session_state.booking_step == 1:
             st.session_state.booking_data["customer_name"] = prompt
             reply = "Phone number bataiye 📞"
@@ -169,62 +171,60 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
 
             st.session_state.booking_step = 0
             st.session_state.booking_data = {}
-    else:
-        # Check if user wants to book
-        if "booking" in lower_prompt or "book" in lower_prompt:
-            if "haan" in lower_prompt or "yes" in lower_prompt:
-                st.session_state.booking_step = 1
-                reply = "Theek hai! Apna naam bataiye please 📝"
-            else:
-                # Call Groq API for general response
-                try:
-                    stream = client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=st.session_state.messages,
-                        temperature=0.3,
-                        max_tokens=50,
-                        stream=True,
-                    )
-
-                    full_response = ""
-                    placeholder = st.empty()
-
-                    for chunk in stream:
-                        if chunk.choices[0].delta.content is not None:
-                            full_response += chunk.choices[0].delta.content
-                            placeholder.markdown(full_response + "▌")
-
-                    reply = full_response.strip()
-                    reply += " Booking karwani hai? (Haan/Nahi) 📅"
-
-                except Exception as e:
-                    reply = f"Groq se baat nahi ho rahi: {str(e)} 😔"
+    # Check if user wants to book
+    elif "booking" in lower_prompt or "book" in lower_prompt:
+        if "haan" in lower_prompt or "yes" in lower_prompt:
+            st.session_state.booking_step = 1
+            reply = "Theek hai! Apna naam bataiye please 📝"
         else:
             # Call Groq API for general response
-            if not barber_found:
-                try:
-                    stream = client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=st.session_state.messages,
-                        temperature=0.3,
-                        max_tokens=50,
-                        stream=True,
-                    )
+            try:
+                stream = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=st.session_state.messages,
+                    temperature=0.3,
+                    max_tokens=50,
+                    stream=True,
+                )
 
-                    full_response = ""
-                    placeholder = st.empty()
+                full_response = ""
+                placeholder = st.empty()
 
-                    for chunk in stream:
-                        if chunk.choices[0].delta.content is not None:
-                            full_response += chunk.choices[0].delta.content
-                            placeholder.markdown(full_response + "▌")
+                for chunk in stream:
+                    if chunk.choices[0].delta.content is not None:
+                        full_response += chunk.choices[0].delta.content
+                        placeholder.markdown(full_response + "▌")
 
-                    reply = full_response.strip()
+                reply = full_response.strip()
+                reply += " Booking karwani hai? (Haan/Nahi) 📅"
 
-                except Exception as e:
-                    reply = f"Groq se baat nahi ho rahi: {str(e)} 😔"
+            except Exception as e:
+                reply = f"Groq se baat nahi ho rahi: {str(e)} 😔"
+    else:
+        # Call Groq API for general response
+        try:
+            stream = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=st.session_state.messages,
+                temperature=0.3,
+                max_tokens=50,
+                stream=True,
+            )
+
+            full_response = ""
+            placeholder = st.empty()
+
+            for chunk in stream:
+                if chunk.choices[0].delta.content is not None:
+                    full_response += chunk.choices[0].delta.content
+                    placeholder.markdown(full_response + "▌")
+
+            reply = full_response.strip()
+
+        except Exception as e:
+            reply = f"Groq se baat nahi ho rahi: {str(e)} 😔"
 
     # Append reply only once
     st.session_state.messages.append({"role": "assistant", "content": reply})
-    with st.chat_message("assistan"):
+    with st.chat_message("assistant"):
         st.markdown(reply)
