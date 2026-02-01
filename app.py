@@ -46,7 +46,7 @@ except Exception as e:
 # ────────────────────────────────────────────────
 # UI - Sidebar with barbers list
 # ────────────────────────────────────────────────
-st.title("✂️ Salon Dost 💈")
+st.title("✂️ Salon  💈")
 st.caption("Sirf barber info aur booking ke liye 😊")
 
 with st.sidebar:
