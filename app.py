@@ -5,7 +5,7 @@ from openai import OpenAI
 import os
 
 # ────────────────────────────────────────────────
-# Load secrets from environment variables
+# Secrets load (Railway variables se)
 # ────────────────────────────────────────────────
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
@@ -29,7 +29,7 @@ client = OpenAI(
 )
 
 # ────────────────────────────────────────────────
-# Load barbers data from Supabase
+# Barbers data Supabase se load karo
 # ────────────────────────────────────────────────
 barbers_df = pd.DataFrame()
 
@@ -44,9 +44,9 @@ except Exception as e:
     st.error(f"Barbers load nahi hue: {str(e)}")
 
 # ────────────────────────────────────────────────
-# UI - Sidebar with barbers list
+# UI - Sidebar mein barbers list
 # ────────────────────────────────────────────────
-st.title("✂️ Salon  💈")
+st.title("✂️ Salon Dost 💈")
 st.caption("Sirf barber info aur booking ke liye 😊")
 
 with st.sidebar:
@@ -98,7 +98,7 @@ for message in st.session_state.messages[1:]:
         st.markdown(message["content"])
 
 # ────────────────────────────────────────────────
-# Chat input and logic
+# Chat input aur logic
 # ────────────────────────────────────────────────
 if prompt := st.chat_input("Kya poochna hai? 😊"):
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -108,25 +108,34 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
     lower_prompt = prompt.lower()
     reply = ""
 
-    # Barber info detect aur Supabase se fetch (specific info ke liye checks add kiye)
+    # Barber info detect - exact match + context check
     barber_found = False
+    lower_prompt_clean = lower_prompt.replace("arham", "").strip()  # tera naam confuse na kare
+
     for barber_name in barbers_df['name'].tolist():
-        if barber_name.lower() in lower_prompt:
+        barber_lower = barber_name.lower()
+        
+        # Exact match ya barber context ke saath partial match
+        if (barber_lower == lower_prompt_clean) or \
+           (barber_lower in lower_prompt_clean and any(word in lower_prompt for word in ["barber", "timing", "time", "off day", "off", "phone", "number"])):
+            
             barber_info = barbers_df[barbers_df['name'] == barber_name].iloc[0]
-            # Specific checks for what user asked
-            if "off day" in lower_prompt or "off" in lower_prompt:
+            
+            # Specific short reply
+            if any(word in lower_prompt for word in ["off day", "off", "band", "chhutti"]):
                 reply = f"{barber_name} ka off day: {barber_info['off_day']} 😊"
-            elif "timing" in lower_prompt:
+            elif any(word in lower_prompt for word in ["timing", "time", "kitne baje"]):
                 reply = f"{barber_name} ki timing: {barber_info['timing']} 😊"
-            elif "phone" in lower_prompt or "number" in lower_prompt:
-                reply = f"{barber_name} ka phone number: {barber_info['phone_number']} 😊"
+            elif any(word in lower_prompt for word in ["phone", "number", "contact", "mobile"]):
+                reply = f"{barber_name} ka number: {barber_info['phone_number']} 😊"
             else:
-                # Full info if not specific
-                reply = f"{barber_name}: Timing - {barber_info['timing']}, Off Day - {barber_info['off_day']}, Phone - {barber_info['phone_number']} 😊"
+                reply = f"{barber_name}: Timing {barber_info['timing']}, Off Day {barber_info['off_day']}, Phone {barber_info['phone_number']} 😊"
+            
             barber_found = True
             break
 
-    if "barber" in lower_prompt and not barber_found:
+    # Barber na mila to clear message
+    if not barber_found and any(word in lower_prompt for word in ["barber", "timing", "off day", "phone", "number"]):
         reply = "Yeh barber idhar kaam nahi karta 😔 Sidebar mein list dekho."
 
     # Booking flow
@@ -194,14 +203,13 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
 
             reply = full_response.strip()
 
-            # Suggest booking only if relevant
             if "booking" in lower_prompt or "book" in lower_prompt:
                 reply += " Booking karwani hai? (Haan/Nahi) 📅"
 
         except Exception as e:
             reply = f"Groq se baat nahi ho rahi: {str(e)} 😔"
 
-    # Append reply only once
+    # Final reply append (sirf ek baar)
     if reply:
         st.session_state.messages.append({"role": "assistant", "content": reply})
         with st.chat_message("assistant"):
