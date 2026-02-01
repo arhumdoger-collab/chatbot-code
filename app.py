@@ -108,21 +108,26 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
     lower_prompt = prompt.lower()
     reply = ""
 
-    # Check for barber info request
+    # Barber info detect aur Supabase se fetch (specific info ke liye checks add kiye)
     barber_found = False
     for barber_name in barbers_df['name'].tolist():
         if barber_name.lower() in lower_prompt:
             barber_info = barbers_df[barbers_df['name'] == barber_name].iloc[0]
-            reply = f"{barber_name}: Timing - {barber_info['timing']}, Off Day - {barber_info['off_day']}, Phone - {barber_info['phone_number']} 😊"
+            # Specific checks for what user asked
+            if "off day" in lower_prompt or "off" in lower_prompt:
+                reply = f"{barber_name} ka off day: {barber_info['off_day']} 😊"
+            elif "timing" in lower_prompt:
+                reply = f"{barber_name} ki timing: {barber_info['timing']} 😊"
+            elif "phone" in lower_prompt or "number" in lower_prompt:
+                reply = f"{barber_name} ka phone number: {barber_info['phone_number']} 😊"
+            else:
+                # Full info if not specific
+                reply = f"{barber_name}: Timing - {barber_info['timing']}, Off Day - {barber_info['off_day']}, Phone - {barber_info['phone_number']} 😊"
             barber_found = True
             break
 
-    if barber_found:
-        # Reply already set → skip to sending
-        pass
-
-    elif "barber" in lower_prompt and not barber_found:
-        reply = "Kaunsa barber? Sidebar mein list dekho ✂️"
+    if "barber" in lower_prompt and not barber_found:
+        reply = "Yeh barber idhar kaam nahi karta 😔 Sidebar mein list dekho."
 
     # Booking flow
     elif st.session_state.booking_step > 0:
@@ -142,7 +147,7 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
                 reply = "Date bataiye (jaise 28-Jan) 📅"
                 st.session_state.booking_step += 1
             else:
-                reply = "Yeh barber list mein nahi mila 😔 Sahi naam batao."
+                reply = "Yeh barber idhar kaam nahi karta 😔 Sahi naam batao."
                 st.session_state.booking_step = 3  # retry
         elif st.session_state.booking_step == 4:
             st.session_state.booking_data["booking_date"] = prompt
@@ -199,5 +204,5 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
     # Append reply only once
     if reply:
         st.session_state.messages.append({"role": "assistant", "content": reply})
-        with st.chat_message("assistan"):
+        with st.chat_message("assistant"):
             st.markdown(reply)
