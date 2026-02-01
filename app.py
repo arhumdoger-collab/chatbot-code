@@ -3,6 +3,7 @@ import pandas as pd
 from supabase import create_client, Client
 from openai import OpenAI
 import os
+import difflib   # ← yeh line add ki hai (typo handling ke liye)
 
 # ────────────────────────────────────────────────
 # Secrets load (Railway variables se)
@@ -44,51 +45,57 @@ except Exception as e:
     st.error(f"Barbers load nahi hue: {str(e)}")
 
 # ────────────────────────────────────────────────
-# Improved barber finder function
+# IMPROVED barber finder – typo tolerant + short name friendly
 # ────────────────────────────────────────────────
 def find_barber(prompt: str) -> tuple[str | None, str | None]:
     prompt_lower = prompt.lower().replace("arham", "").strip()
     
-    # Noise words jo confuse karte hain
-    noise = ["ka", "ki", "ke", "bhai", "se", "ko", "kaun", "kitna", "baje", "number", "timing", "time", "off", "day", "chutti", "band", "hai", "kya"]
-    clean_words = [w for w in prompt_lower.split() if w not in noise and len(w) > 2]
-    clean_prompt = " ".join(clean_words)
+    # Noise words hatayein lekin name ke liye zyada strict na ho
+    noise = ["ki", "ka", "ke", "hai", "kya", "batao", "bata", "bhai", "se", "ko", "aur"]
+    words = [w for w in prompt_lower.split() if w not in noise and len(w) > 2]
+    clean_query = " ".join(words)
+    if not clean_query:
+        clean_query = prompt_lower  # agar sirf noise tha to original use karo
     
     best_match = None
-    best_score = 0
+    best_score = 0.0
     info_type = None
     
     for _, row in barbers_df.iterrows():
         name_lower = row['name'].lower()
         
-        score = 0
+        # 1. Similarity score (typo handle karega)
+        sim = difflib.SequenceMatcher(None, clean_query, name_lower).ratio()
         
-        # 1. Exact match (strongest)
-        if name_lower == clean_prompt or name_lower == prompt_lower:
-            score = 12
-        # 2. Starts with
-        elif name_lower.startswith(clean_prompt) or clean_prompt.startswith(name_lower):
-            score = 9
-        # 3. Contains
-        elif name_lower in prompt_lower:
-            score = 6
+        # 2. Agar naam kahin bhi prompt mein hai → bonus
+        if name_lower in prompt_lower:
+            sim += 0.30
         
-        if score > 0:
-            # Info type detect karo
-            if any(w in prompt_lower for w in ["timing", "time", "kitne", "kab", "khulta", "band"]):
+        # 3. Starts-with ya short prefix match → zyada bonus
+        if name_lower.startswith(clean_query) or clean_query.startswith(name_lower):
+            sim += 0.20
+        
+        # 4. Spaces ignore karke bhi check (hussnain → huss nain waghera)
+        if name_lower.replace(" ", "") in prompt_lower.replace(" ", ""):
+            sim += 0.15
+        
+        if sim > best_score and sim >= 0.65:  # 65%+ ko acceptable maano
+            best_score = sim
+            best_match = row['name']
+            
+            # Info type decide karo
+            pl = prompt_lower
+            if any(w in pl for w in ["timing", "time", "kitne", "kab", "khulta", "baje", "open", "close"]):
                 info_type = "timing"
-            elif any(w in prompt_lower for w in ["off", "chhutti", "band", "weekly off", "rest"]):
+            elif any(w in pl for w in ["off", "chhutti", "band", "thursday", "weekly", "rest"]):
                 info_type = "off_day"
-            elif any(w in prompt_lower for w in ["phone", "number", "mobile", "contact", "whatsapp", "call"]):
+            elif any(w in pl for w in ["phone", "number", "mobile", "contact", "whatsapp", "call", "num"]):
                 info_type = "phone"
             else:
                 info_type = "full_info"
-            
-            if score > best_score:
-                best_score = score
-                best_match = row['name']
     
     return best_match, info_type
+
 
 # ────────────────────────────────────────────────
 # UI
@@ -221,10 +228,10 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
             st.session_state.booking_step = 0
             st.session_state.booking_data = {}
 
-    # ─── Normal message → Groq (sirf jab barber related nahi ho) ───
+    # ─── Normal / booking start / Groq fallback ──────────
     if not reply and not barber_found:
-        if any(w in lower_prompt for w in ["booking", "book", "booking karwani", "appointment"]):
-            reply = "Booking karwani hai? Haan to naam batao 😊"
+        if any(w in lower_prompt for w in ["booking", "book", "appointment", "book kar", "karwani"]):
+            reply = "Booking karwani hai? Haan to pehle apna naam batao 😊"
             st.session_state.booking_step = 1
             st.session_state.booking_data = {}
         else:
@@ -249,7 +256,7 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
             except Exception as e:
                 reply = f"Groq se baat nahi ho rahi: {str(e)} 😔"
 
-    # Final reply
+    # ─── Final reply send ────────────────────────────────
     if reply:
         st.session_state.messages.append({"role": "assistant", "content": reply})
         with st.chat_message("assistant"):
