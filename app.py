@@ -199,5 +199,5 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
     # Append reply only once
     if reply:
         st.session_state.messages.append({"role": "assistant", "content": reply})
-        with st.chat_message("assistant"):
+        with st.chat_message("assistan"):
             st.markdown(reply)
