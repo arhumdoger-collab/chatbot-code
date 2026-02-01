@@ -118,11 +118,11 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
             barber_found = True
             break
 
-    if "barber" in lower_prompt and not barber_found:
+    # Agar barber found hai to sirf wahi reply do, aur agay mat jao
+    if not barber_found and "barber" in lower_prompt:
         reply = "Kaunsa barber? Sidebar mein list dekho ✂️"
-
-    # Booking flow
-    elif st.session_state.booking_step > 0:
+    # Booking flow (only if barber not found)
+    elif not barber_found and st.session_state.booking_step > 0:
         if st.session_state.booking_step == 1:
             st.session_state.booking_data["customer_name"] = prompt
             reply = "Phone number bataiye 📞"
@@ -201,29 +201,30 @@ if prompt := st.chat_input("Kya poochna hai? 😊"):
                     reply = f"Groq se baat nahi ho rahi: {str(e)} 😔"
         else:
             # Call Groq API for general response
-            try:
-                stream = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=st.session_state.messages,
-                    temperature=0.3,
-                    max_tokens=50,
-                    stream=True,
-                )
+            if not barber_found:
+                try:
+                    stream = client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=st.session_state.messages,
+                        temperature=0.3,
+                        max_tokens=50,
+                        stream=True,
+                    )
 
-                full_response = ""
-                placeholder = st.empty()
+                    full_response = ""
+                    placeholder = st.empty()
 
-                for chunk in stream:
-                    if chunk.choices[0].delta.content is not None:
-                        full_response += chunk.choices[0].delta.content
-                        placeholder.markdown(full_response + "▌")
+                    for chunk in stream:
+                        if chunk.choices[0].delta.content is not None:
+                            full_response += chunk.choices[0].delta.content
+                            placeholder.markdown(full_response + "▌")
 
-                reply = full_response.strip()
+                    reply = full_response.strip()
 
-            except Exception as e:
-                reply = f"Groq se baat nahi ho rahi: {str(e)} 😔"
+                except Exception as e:
+                    reply = f"Groq se baat nahi ho rahi: {str(e)} 😔"
 
     # Append reply only once
     st.session_state.messages.append({"role": "assistant", "content": reply})
-    with st.chat_message("assistant"):
+    with st.chat_message("assistan"):
         st.markdown(reply)
